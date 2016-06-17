@@ -1,0 +1,366 @@
+\documentclass[a4paper,abstracton,12pt]{scrartcl}
+
+\usepackage[ngerman]{babel}
+\usepackage[T1]{fontenc}
+\usepackage[ansinew]{inputenc}
+%\usepackage[bitstream-charter]{mathdesign}
+\usepackage{lmodern}
+\usepackage{bibgerm}
+
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{alltt}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{ziffer}
+\usepackage{tabularx}
+
+\title{Container Loading}
+\author{Maik Riechert (10INM)}
+
+\definecolor{lightblue}{rgb}{0.8,0.85,1}
+\definecolor{LinkColor}{rgb}{0,0,0}
+\usepackage[
+    pdftitle={Container Loading},
+    pdfauthor={Maik Riechert}]{hyperref}
+\hypersetup{colorlinks=true,
+    linkcolor=LinkColor,
+    citecolor=LinkColor,
+    filecolor=LinkColor,
+    menucolor=LinkColor,
+    urlcolor=LinkColor,
+    pdfstartview=,
+    pdfpagemode=UseNone
+    }
+
+\begin{document}
+
+\maketitle
+
+\section{Problembeschreibung}
+
+Dieser Artikel bezieht sich auf die Projektarbeit im Fach \emph{Evolution�re Algorithmen} an der HTWK Leipzig. Ein schwer zu l�sendes kombinatorisches Problem soll mithilfe von evolution�ren Algorithmen approximiert werden.
+
+Der Autor untersuchte das sogenannte Beh�lterproblem, auch bekannt als dreidimensionales \emph{Bin Packing} oder \emph{Container Loading}. Es ist NP-schwer und bei gro�en Probleminstanzen nur approximiert l�sbar.
+
+Beim allgemeinen klassischen Bin Packing werden eine Anzahl von Objekten in mehrere Beh�lter verteilt, sodass dieser nicht "`�berl�uft"' und die ben�tigte Beh�lteranzahl minimal wird. Dies kann sich auf den verf�gbaren Raum, aber auch Objektgewichte oder �hnliches beziehen. Allen Problemklassen gemeinsam ist, dass f�r jeden Beh�lter eine oder mehrere Bedingungen erf�llt werden m�ssen, z.B. das Maximalgewicht oder das verf�gbare Volumen.
+
+In dieser Arbeit wird der Fall betrachtet, dass nur ein einziger Container $C$ mit der Gr��e $(B_C,H_C,T_C)$ existiert, in den $n$ quaderf�rmige Kisten $K_i$ ($0 \le i < n$) teilweise verschiedener Gr��e $(B_i,H_i,T_i)$ und erlaubter Drehung $D_i$ m�glichst platzsparend beladen werden sollen. Die erlaubte Drehung legt fest, ob die Breite und Tiefe in die Vertikale gestellt werden kann. Da die H�he sich schon in der Vertikalen befindet, muss dies nicht festgelegt werden. Ebenso ist eine Drehung mit der H�he als Achse immer erlaubt -- jeweils um 90�. F�r jede Kiste ist also $D_i$ wie folgt festgelegt:
+
+\begin{equation}
+	D_i = (B_i^{(D)},  T_i^{(D)})
+\end{equation}
+
+\begin{equation}
+	D_i.* = \begin{cases} 
+	1, & \text{Kante als Vertikale erlaubt}\\
+	0, & \text{sonst}
+	\end{cases}
+\end{equation}
+
+Die Schwierigkeit ergibt sich vor allem daraus, dass meist viel mehr Kisten vorhanden sind, als theoretisch in den Container passen w�rden. Es muss also eine Kistenmenge gefunden werden, bei deren Beladung $L$ die Platznutzung $N$ im Container maximal bzw. die Platzverschwendung $V$ minimal wird. $L$ ist eine Menge von Tupeln, wobei jedes Tupel eine zu beladende Kiste mit dem Kistenindex $idx_i$, der Position $p_i$ im Container, sowie der Rotation $r_i$ beschreibt.
+
+\begin{equation}
+L = \{(idx_1,p_1,r_1),(idx_2,p_2,r_2),\ldots\} \ \text{mit} \ p_i = (x_i, y_i, z_i), r_i = (b_i, t_i, v_i)
+\end{equation}
+
+\begin{equation}
+N = \sum_{i\in L.idx} B_i \cdot H_i \cdot T_i
+\end{equation}
+
+\begin{equation}
+V = B_C \cdot H_C \cdot T_C - N
+\end{equation}
+
+$i\in L.idx$ beschreibt hier die Menge aller $idx$-Elemente aus jedem Tupel in $L$, d.h. $i\in L.idx = \{idx_1, idx_2, \ldots\}$.
+
+\section{Modellierung}
+
+Das vorliegende Problem soll durch einen genetischen Algorithmus m�glichst optimal approximiert oder, falls alle gegebenen Kisten theoretisch in den Container passen, im Idealfall gel�st werden. Da ein solcher Algorithmus bei praktischer Anwendung sehr oft ausgef�hrt und zeitnah gute Ergebnisse liefern muss, steht vorallem die ben�tigte Zeit f�r die Erreichung solcher Ergebnisse im Vordergrund. 
+
+Im Folgenden wird das Format des Genotyps, eine Methode f�r dessen Dekodierung, sowie die Fitnessfunktion beschrieben.
+
+\subsection{Datenrepr�sentation}
+
+Die triviale unver�nderte Repr�sentation des Ph�notyps $L$ als Genotyp, d.h. als Menge von Tupeln mit Positions- und Rotationsangaben der Kisten, ist als Ergebnis f�r den Benutzer zwar w�nschenswert, aber v�llig ungeeignet f�r die Verarbeitung im evolution�ren Algorithmus. Jede Positions- oder Rotations�nderung einer Kiste w�rde in den meisten F�llen zu einem ung�ltigen Individuum f�hren, da sich Kisten �berschneiden w�rden.
+
+Der g�ngige und auch hier gew�hlte Ansatz ist es, die Beladungsreihenfolge als Genotyp zu benutzen. Die Dekodierungsfunktion stellt damit eine Heuristik dar, welche deterministisch eine Beladung mit gegebener Reihenfolge simuliert und damit die Positionsangaben erzeugt, was wiederum den Ph�notyp ergibt.
+
+Die Rotationseigenschaft kann nun entweder Teil des Genotyps sein, oder genau wie die Position in der Dekodierungsfunktion gefunden bzw. festgelegt werden. Hier ist die Rotation Teil des Genotyps $I.G$, welcher eine Permutation darstellt, in dessen Tupeln die Rotationskomponente ge�ndert werden kann.
+
+\begin{equation}
+	I.G = ((idx_1, r_1),(idx_2, r_2),\ldots,(idx_n, r_n))
+\end{equation}
+
+Es ist zu beachten, dass der Genotyp \emph{jede} Kiste enth�lt. Die Dekodierungsfunktion muss also entscheiden, welche der Kisten nicht beladen werden, falls kein Platz mehr im Container vorhanden ist. Dieses Vorgehen ist n�tig, da die Information, welche Kisten weggelassen werden m�ssen, hier noch nicht existiert und weil sich eine �ndernde Permutationsgr��e schlecht im (evolution�ren) Algorithmus nutzen lassen w�rde.
+
+\emph{Anmerkung:} In der Implementierung wird aus Effizienzgr�nden statt dem Index ein Tupel bestehend aus Index, Kistengr��e und erlaubten Drehungen verwendet, um das st�ndige Abfragen dieser Daten aus einer zentralen Datenstruktur zu vermeiden.
+
+\subsection{Dekodierung}
+
+In der Literatur werden viele Beladungsheuristiken beschrieben, welche aber vor allem bei rein deterministischen Algorithmen eingesetzt werden \cite{bortfeldt2008}\cite{wenqi2009}\cite{eley2002}\cite{bortfeldt1997}. 
+Die Beladungsreihenfolge wird dabei meist erst in der Heuristik gew�hlt und ist nicht vorher festgelegt. Aus diesem Grund und weil der Autor ein eigenes Verfahren entwickeln wollte, werden die Heuristiken in der Literatur nicht weiter betrachtet. Da bei evolution�ren Algorithmen eine hohe Generationszahl h�ufig bessere Ergebnisse liefert, stand hier eine eher simple Heuristik mit schneller Ausf�hrungszeit im Vordergrund.
+
+Die hier benutzte Heuristik stellt sicher, dass es keine Freir�ume unter den Kisten gibt und Kisten immer von oben beladen werden. Der Ablauf ist wie folgt:
+
+\begin{alltt}
+dec(G: Genotyp): Ph�notyp
+  L \(\leftarrow\emptyset\)
+  for i \(\leftarrow\) 0 to |G|-1
+    P \(\leftarrow\) sucheFreienPlatz(G(i))
+    if P \(\in\emptyset\)
+      return L
+    L \(\leftarrow\) L \(\cup\) (G(i) \(\cup\) P)
+  return L
+\end{alltt}
+
+Sobald die erste Kiste nicht mehr in den Container passt, wird abgebrochen. Das Ergebnis der Dekodierung ist die konkrete Beladung $L$.
+
+\begin{equation}
+L = dec(I.G) = \{(idx_1,\mathbf{p_1},r_1),\ldots,(idx_k,\mathbf{p_k},r_k)\} \ \text{mit}\ k \le n
+\end{equation}
+
+Die Suche eines freien Platzes k�nnte naiv so umgesetzt werden, dass f�r jede Position $(x,y,z)$ im Container gepr�ft wird, ob die Kiste komplett auf ein oder mehreren anderen Kisten stehen w�rde und ob die zu beladende Kiste eine andere geometrisch schneiden w�rde. Der Rechenaufwand steigt hier exponentiell mit der Anzahl der schon beladenen Kisten an. Eine andere L�sung musste also gefunden werden.
+
+Die hier benutzte Platzsuche basiert auf dem Paradigma der dynamischen Programmierung und benutzt eine Datenstruktur, welche die Bedingung, dass jede Kiste vollst�ndig auf anderen Kisten oder dem Boden stehen muss, direkt garantiert.
+
+Der Beladungszustand des Containers wird auf eine Matrix $M$ abgebildet, wobei die Indizes den $(x,z)$-Koordinaten und die Werte der aktuellen Beladungsh�he entsprechen. Die Suche nach einem geeigneten Platz beschr�nkt sich nun auf die Suche nach einem Rechteck mit dem Kistenboden als Gr��e in der Matrix, wobei alle Werte innerhalb des Rechtecks den selben Wert und damit die selbe Beladungsh�he haben m�ssen. Rechtecke, dessen Werte gr��er als $H_C - H_i$ sind, k�nnen sofort ignoriert werden, da die Kiste �ber die Containerdecke ragen w�rde.
+
+\begin{equation}
+M = \begin{pmatrix}
+0 & 0 & 0 & 0 & 0 & 0 & 0\\
+4 & 4 & 2 & 2 & 2 & 0 & 0\\
+4 & 4 & 2 & 2 & 2 & 0 & 0\\
+0 & 0 & 2 & 2 & 2 & 1 & 1\\
+0 & 0 & 0 & 0 & 0 & 1 & 1
+\end{pmatrix}
+\end{equation}
+
+\begin{equation}
+R = \left\{\begin{pmatrix}
+0 & 0\\
+0 & 0\\
+0 & 0
+\end{pmatrix}, \begin{pmatrix}
+2 & 2\\
+2 & 2\\
+2 & 2
+\end{pmatrix}, \begin{pmatrix}
+2 & 2\\
+2 & 2\\
+2 & 2
+\end{pmatrix}\right\}
+\end{equation}
+
+In diesem Beispiel ist ein Rechteck der Gr��e $2 \times 3$ gesucht. Alle Elemente in $R$ sind g�ltig, wobei der Algorithmus beim ersten Treffer abbricht und keine weiteren Eigenschaften, wie z.B. maximale Ber�hrungsfl�che, untersucht. Der Suchalgorithmus beginnt stets bei $(0,0)$, pr�ft eine Zeile, und f�hrt die Suche in der folgenden Zeile fort. Dadurch ist auch garantiert, dass Kisten nicht wahllos, sondern immer an andere Kisten bzw. den Containerw�nden platziert werden. Sobald eine Kiste platziert wird, werden die Werte des Rechtecks in der Matrix um die Kistenh�he erh�ht. Die Laufzeit f�r das Finden eines Rechtecks betr�gt hier $O(B_C \cdot B_T)$.
+
+\emph{Anmerkung:} Es ist zu beachten, dass dieser Algorithmus einen hohen Speicherverbrauch hat. Bei jedem Dekodiervorgang muss ein zweidimensionales Array der Gr��e $B_C \times B_T$ angelegt werden, was bei Testinstanzen mit einer Containergr��e von $10000 \times 10000$ zu einem Speicherverbrauch von ca. 500MB f�hrt (JVM). Allerdings haben die in der Literatur am meisten benutzten Instanzen eine Gr��e von $233 \times 587$ und $[2000,2800] \times [3000,6000]$, weswegen dies hier kein besonderes Problem darstellte.
+
+\subsection{Fitnessfunktion}
+
+Die Fitness eines Ph�notyps ist das Verh�ltnis der Summe der Volumina aller aufgeladenen Kisten zum Containervolumen. Es stellt damit die prozentuale Raumnutzung dar und eignet sich zum Vergleich mit Ergebnissen aus der Literatur.
+
+\begin{equation}
+F(L) = \frac{\sum_{i\in L.idx} B_i \cdot H_i \cdot T_i}{B_C \cdot H_C \cdot T_C}
+\end{equation}
+
+\section{Selektion}
+
+Das Beladungsproblem hat die Eigenschaft sehr viele lokale Optima zu besitzen. Um diesem Problem zu begegnen, war schnell klar, dass die Selektion einen hohen Fokus auf Erforschung haben und erst zum Ende eine Feinabstimmung bewirken sollte.
+
+Basierend auf einer Evaluation mehrerer Methoden der Fitnessskalierung von Hopgood und Mierzejewska \cite{transformranking}, wurde deutlich, dass eine reine fitnessproportionale oder rangbasierte Selektion, oder auch das stochastische universelle Sampling, in den wenigsten F�llen bei G�telandschaften mit vielen lokalen Optima zu guten Ergebnissen f�hren. Die Skalierung von Fitnesswerten wird vorallem angewandt, um den Selektionsdruck zu Beginn niedrig zu halten (Erforschung), und ihn mit fortschreitender Generationszahl stark ansteigen zu lassen (Feinabstimmung).
+
+In diesem Projekt wurde die Sigmaskalierung in Verbindung mit stochastischem universellen Sampling angewandt, da bei dieser Methode der zus�tzliche Rechenaufwand im Rahmen bleibt und gleichzeitig sehr gute Ergebnisse bei der 2D-Schwefel sowie der 2D-Griewank Funktion von Hopgood und Mierzejewska erzielt wurden. Ein weiterer Vorteil ist, dass die Methode nicht von einem Parameter abh�ngt, der erst h�tte gefunden werden m�ssen.
+
+Bei der Sigmaskalierung wird die Durchschnittsfitness $\overline{F}$ und dessen Standardabweichung $\sigma$ in der Population ber�cksichtigt. Solange die Standardabweichung relativ gro� ist, stellt die Skalierung sicher, dass diese solange wie m�glich erhalten bleibt, um einen m�glichst gro�en Suchbereich zu erforschen. Durch den geringen Selektionsdruck passierte es h�ufig, dass sehr gute Individuen verloren gingen und nicht wieder gefunden wurden. Deshalb wird hier zus�tzlich Elitismus mit einem Individuum benutzt, sodass das beste Individuum auf jeden Fall in die n�chste Generation gelangt. Wenn die Population dann langsam konvergiert, wird die Standardabweichung geringer, was wiederum zur Folge hat, dass Individuen mit einer G�te �ber dem Durchschnitt stark bevorzugt werden und damit der Selektionsdruck ansteigt.
+
+\begin{equation}
+F_S = \begin{cases} 
+	1 & ,\sigma = 0\\
+	1 + \frac{F - \overline{F}}{2 \cdot \sigma} & ,\sigma > 0
+\end{cases}
+\end{equation}
+
+\emph{Anmerkung:} Bei sehr schlechten Individuen kann es passieren, dass $F_S$ einen negativen Wert annimmt. In diesem Fall wird die skalierte Fitness durch eine sehr kleine positive Fitness ersetzt, hier $0,1$.
+
+\section{Operatoren}
+
+In diesem Abschnitt werden die benutzten bzw. entwickelten Operatoren in der Reihenfolge ihrer Integration in das Projekt beschrieben.
+
+\subsection{Rekombination}
+
+Die Wahl des Rekombinationsoperators beschr�nkt sich auf solche, die garantieren, dass keine Elemente nach der Rekombination doppelt vorkommen. Hierbei ist zu beachten, dass ein Element von einem anderen nur anhand seiner eindeutigen ID (Kistenindex $idx_i$) unterschieden wird -- die Rotationskomponente wird ignoriert.
+
+Der Zweck der Rekombination ist vor allem die Verbindung guter Eigenschaften zweier Individuen. Der Autor konnte kein Verfahren finden, welches dieses Kriterium f�r das Beladungsproblem erf�llt. Der Hauptgrund ist, dass die Dekodierung sehr empfindlich auf �nderungen der Permutation reagiert. Umso weiter am Anfang der Permutation ein Element ver�ndert wird, umso gr��er ist die Wahrscheinlichkeit, dass eine ab diesem Element komplett verschiedene Beladung resultiert. Da bei der Rekombination gr��ere Teile ge�ndert werden, f�hrt dies h�ufig zu schlechteren Individuuen, die erst durch Mutation optimiert werden m�ssen. Folglich �hnelt die Wirkung einer Rekombination auf dieses Problem einer mischenden Mutation.
+
+Dennoch wurde eine angepasste Version des PMX-Operators \cite{pmx} (partially mapped crossover) benutzt, da positive Effekte nicht endg�ltig ausgeschlossen werden konnten. Selbst, wenn die Rekombination nur wie eine mischende Mutation wirkt, h�tte dies keine Nachteile, da dadurch zumindest eine �ber die Zeit konstante Erforschung des Suchraums gew�hrleistet ist. Der PM-Crossover wurde dahingehend angepasst, dass das linke Ende des jeweils zu �bernehmenden Teilst�cks stets beim ersten Element beginnt. Dadurch wird eine �berm��ige Zerst�rung des Genotyps verhindert. Die gew�hlte Rekombinationswahrscheinlichkeit betr�gt $p_x = 0,5$. Werte �ber $0,5$ hatten einen zu gro�en Einfluss auf die Durchschnittsfitness und sorgten daf�r, dass diese sich nicht wesentlich �ber viele Generationen verbesserte -- zu viele Individuen wurden zerst�rt.
+
+\emph{Anmerkung:} Es wurde keine Abbildungsrekombination benutzt, da diese in dem verwendeten Framework nicht mitgeliefert wird und kein weiterer Vorteil f�r eine spezielle Art der Rekombination erkannt wurde.
+
+\subsection{Mutation}
+
+Da hier die Rekombination nur bedingt zu besseren Individuen f�hrt, lag der Fokus auf der Entwicklung geeigneter Mutationsoperatoren. Im Folgenden wird jeder benutzte bzw. entworfene Operator beschrieben und dessen Sinnhaftigkeit untersucht.
+
+\subsubsection{Vertauschung}
+
+Der wohl einfachste und naheliegendste Mutationsoperator f�r Permutationen ist die Vertauschung. Es werden zuf�llig zwei Elemente im Genotyp gew�hlt und miteinander vertauscht.
+
+Die Umsetzung dieses Operators l�sst gewisse Freir�ume offen. Zum einen ist festzulegen, wie viele Vertauschungen in einem Aufruf durchgef�hrt werden. Zum anderen muss entschieden werden, ob die Positionen zuf�llig gew�hlt werden oder abh�ngig voneinander sein sollen. Dies ergibt die zwei Parameter Vertauschungsanzahl $N$ und Schrittweite $S$. Soll genau ein Element mit irgendeinem anderen getauscht werden, w�re $N=1$ und $S \sim U(1,|I.G|)$, wobei $U$ f�r eine Uniformverteilung steht. Das erste Element wird dabei immer uniform gew�hlt und ist nicht von den Parametern abh�ngig.
+
+Da schon kleine Ver�nderungen die Fitness stark beeinflussen k�nnen, wurde hier $N = S \sim P_1$ benutzt, wobei $P_\lambda$ der Poisson-Verteilung wie in Abbildung \ref{fig:poisson1} entspricht. Damit ist gew�hrleistet, dass die Anzahl der Vertauschungen und die Schrittweite stets gering bleiben, aber dennoch mit niedriger Wahrscheinlichkeit auch h�her sein k�nnen. Durch Benutzung dieser Verteilung ist ebenfalls eine Mutationswahrscheinlichkeit als dritter Parameter nicht zwingend n�tig, da $P_1(X=0) \approx 0,4$ ist und somit h�ufig keine Vertauschung auftritt -- im Fall $N=0$ oder $S=0$.
+
+\begin{figure}
+	\centering
+		\includegraphics[width=0.4\textwidth]{imgs/poisson1.pdf}
+	\caption{Poisson-Verteilung mit $\lambda = 1$}
+	\label{fig:poisson1}
+\end{figure}
+
+\subsubsection{Einzel-Rotation}
+
+Da die Rotationsinformation Teil des Genotyps ist, muss diese ebenfalls mutiert werden. Daf�r wurde die Einzel-Rotation entwickelt, welche abh�ngig von einer Mutationswahrscheinlichkeit zuf�llig ein Element der Permutation w�hlt und dann dessen Rotationskomponente zuf�llig �ndert. Die Wahl der neuen Rotation erfolgt mit einer Uniformverteilung, wobei es erlaubt ist, dass die alte Rotation wieder gew�hlt wird. F�r die Mutationswahrscheinlichkeit wurde mit $p_r = 0,3$ ein Wert gefunden, bei dem eine fr�he Konvergenz verhindert und die Erforschung des Suchraums gef�rdert wird.
+
+\emph{Anmerkung:} Dieser Operator wurde anfangs noch ohne Mutationswahrscheinlichkeit umgesetzt. Um dennoch eine solche zu simulieren, wurde der \emph{Split-Evolution} Operator des benutzten Frameworks verwendet. Dieser erlaubt es, zwei Tupel von Operatoren jeweils auf einen Teil der Population getrennt anzuwenden. Auf $90\%$ der Population wurde der PM-Crossover und die Vertauschungsmutation angewandt. Die restlichen $10\%$ wurden der Einzel-Rotation unterzogen.
+
+\subsubsection{Ersetzung}
+
+Zum Zeitpunkt der Implementierung aller vorheriger Operatoren ben�tigte ein Durchlauf des genetischen Algorithmus mit 60 Generationen und einer Populationsgr��e von 40 knapp zwei Stunden (Intel Core 2 Duo mit $2,8$ GHz). Unter diesen Voraussetzungen entstand h�ufig das in Abbildung \ref{fig:thpack8-2_pmx,listmutation,rotation,pop40} zu sehende Szenario. Es ist zu erkennen, dass die Population schnell konvergiert und offensichtlich keine hohe Diversit�t erhalten werden konnte.
+
+\begin{figure}
+	\centering
+		\includegraphics[width=0.80\textwidth]{imgs/thpack8-2_pmx,listmutation,rotation,pop40.pdf}
+	\caption{Fitnessverlauf mit 40 Individuen und den Operatoren PMX, Vertauschung und Einzel-Rotation; Testinstanz THPACK8-2 aus \cite{packlib2}}
+	\label{fig:thpack8-2_pmx,listmutation,rotation,pop40}
+\end{figure}
+
+Aufgrund sp�terer Erfahrungen hat sich gezeigt, dass die Erh�hung der Populationsgr��e der einzig gute Kompromiss ist. Da die Geschwindigkeit allerdings zu diesem Zeitpunkt noch relativ niedrig war, hat der Autor nach anderen L�sungen gesucht. Eine davon ist die Implementierung des Ersetzungsoperators. Abh�ngig von einer Mutationswahrscheinlichkeit ersetzt dieser Operator ein Individuum komplett durch ein zuf�llig neu generiertes, wobei es keine Abh�ngigkeiten zwischen beiden Genotypen gibt. Das Ziel dabei ist, dass immer wieder neues Genmaterial einflie�en soll, welches letztlich die Diversit�t beg�nstigen soll. Die Mutationswahrscheinlichkeit wurde hier mit $p_e = 0,1$ festgelegt, da bei h�heren Werten der Suchfortschritt immer weiter sinken w�rde. In Abbildung \ref{fig:thpack8-2_pmx,listmutation,rotation,replacement,pop40} ist zu sehen, dass der Ersetzungsoperator die Standardabweichung relativ konstant h�lt und somit f�r eine gute Diversit�t sorgt.
+
+\begin{figure}
+	\centering
+		\includegraphics[width=0.80\textwidth]{imgs/thpack8-2_pmx,listmutation,rotation,replacement,pop40.pdf}
+	\caption{Fitnessverlauf mit 40 Individuen und den Operatoren PMX, Vertauschung, Einzel-Rotation und Ersetzung; Testinstanz THPACK8-2}
+	\label{fig:thpack8-2_pmx,listmutation,rotation,replacement,pop40}
+\end{figure}
+
+\subsubsection{Typ-Rotation}
+
+Durch diverse Optimierungen am Algorithmus, der Ausf�hrungsumgebung sowie der Kompilierung konnte die Geschwindigkeit mehr als verdoppelt werden, sodass die Populationsgr��e von 40 auf 100 bei gleichbleibender Gesamtzeit erh�ht werden konnte. Auch wenn dies zur weiteren Steigerung der Diversit�t und teilweise besseren Ergebnissen f�hrte, waren die erreichten Werte noch recht bescheiden im Vergleich zu denen in der Literatur (z.B. $F=0,91$ f�r Probleminstanz THPACK8-2 durch Eley \cite{eley2002}). Das Ziel war es nun, m�glichst geschickt weitere Mutationsoperatoren zu entwerfen, welche speziell auf das Beladungsproblem bezogen sein und besondere Eigenschaften von typischen Probleminstanzen ber�cksichtigen sollten.
+
+Beim Betrachten des f�r Instanz THPACK1-10 visuell dargestellten L�sungskandidaten in \cite{eley2002} wurde offensichtlich, dass eine gute L�sung vor allem dann entsteht, wenn Kisten des selben Typs aneinander oder aufeinander gestapelt werden. Dieser Umstand war direkt von der Heterogenit�t des gegebenen Kistenbestands abh�ngig. Eine schwache Heterogenit�t, d.h. wenige verschiedene Kistengr��en, konnte vorteilhaft benutzt werden, um in einem gewissen Ma�e eine Stapelung zu forcieren bzw. zu f�rdern und damit eine effiziente Beladung zu erreichen.
+
+Da Kisten gleicher Gr��e in den meisten F�llen nur aufeinander gestapelt werden k�nnen, wenn sie die selbe Rotation haben, wurde der Operator Typ-Rotation entworfen. Dieser w�hlt abh�ngig von einer Mutationswahrscheinlichkeit zuf�llig eine Kiste im Genotyp aus und �ndert genau wie die Einzel-Rotation die Rotationskomponente. Zus�tzlich wird allen weiteren Kisten im Genotyp mit derselben Gr��e die selbe Rotationskomponente zugewiesen. Die Hoffnung ist, dass zuf�llig in der Permutation nebeneinander liegende Kisten selber Gr��e (aber unterschiedlicher Rotation) nun gestapelt werden k�nnen, da die Rotationskomponenten gleichgesetzt wurden. Einige Tests mit dem Operator lieferten keine offensichtlichen Verbesserungen, weshalb ein Hypothesentest durchgef�hrt wurde.
+
+\begin{table}
+  \caption{Fitnesswerte, rotierte sowie ausgelassene Kisten f�r THPACK1-10 nach 5 Minuten mit und ohne Typ-Rotation}
+  \label{tbl:stackrotation}
+	\centering
+	\begin{tabular}{l|l|c|c}
+	 & Fitness & rotierte Kisten & ausgelassene Kisten \\ 
+	\hline
+	ohne Typ-Rotation & 0,8386 & 3 & 23 \\ 
+	 & 0,8358 & 4 & 21 \\ 
+	 & 0,8440 & 3 & 27 \\ 
+	 & 0,8437 & 3 & 24 \\ 
+	 & 0,8165 & 5 & 28 \\ 
+	 & 0,8250 & 2 & 21 \\ 
+	 & 0,8386 & 3 & 23 \\ 
+	\hline
+	mit Typ-Rotation & 0,8494 & 28 & 15 \\ 
+	 & 0,8611 & 82 & 20 \\ 
+	 & 0,8386 & 38 & 23 \\ 
+	 & 0,8511 & 23 & 25 \\ 
+	 & 0,8511 & 46 & 21 \\ 
+	 & 0,8541 & 4 & 22 \\ 
+	 & 0,8226 & 55 & 26 \\ 
+	\end{tabular}
+\end{table}
+
+Getestet wurde mit THPACK1-10 und den bisher genannten Parameterwerten. Nach jeweils 5 Minuten wurde die Evolution angehalten. Aus Tabelle \ref{tbl:stackrotation} ergibt sich f�r den t-Test $t=1,9992$, was als nicht wirklich statistisch signifikant interpretiert werden kann. Allerdings f�llt in den Testdaten der letzte Fitnesswert auf, welcher als Ausrutscher gesehen werden k�nnte. Wird dieser Wert ignoriert, ist $t=3,253$, was statistisch als sehr signifikant betrachtet werden kann.
+
+Es folgt, dass der Operator eine leichte Tendenz zu besseren L�sungskandidaten aufweist. Dennoch sind die Unterschiede zu gering. Eine Ursache daf�r k�nnte sein, dass die Wahrscheinlichkeit, dass gleichgro�e Kisten in der Permutation direkt nebeneinander liegen, zu niedrig ist.
+
+\subsubsection{Clusterbildung}
+
+Um das Potential der Typ-Rotation auszunutzen, war es also wichtig, gleichgro�e Kisten m�glichst nah oder direkt nebeneinander in der Permutation zu platzieren. Zu diesem Zweck wurde der Clusterbildungsoperator entworfen. Der Ablauf des Operators ist im Folgenden zu sehen:
+
+\begin{alltt}
+cluster(G: Genotyp): Genotyp
+  R \(\leftarrow\) clone(G)
+  refIdx \(\leftarrow\) U(0,|G|-1)
+  refBox \(\leftarrow\) G(refIdx)
+  freeIdx \(\leftarrow\) -1
+  for i \(\leftarrow\) idx + 1 to |G|-1
+    box \(\leftarrow\) R(i)
+    if box.size = refBox.size && box.rotation = refBox.rotation
+      if freeIdx != -1
+        swap(R, freeIdx, i)
+        freeIdx \(\leftarrow\) freeIdx + 1
+    else if freeIdx = -1
+      freeIdx \(\leftarrow\) i
+  return R
+\end{alltt}
+
+Der Operator w�hlt also zun�chst zuf�llig eine Referenzkiste. Danach werden alle darauf folgenden Kisten auf Typgleichheit untersucht. Typgleichheit ist hier gegeben, wenn die Gr��e und Rotation �bereinstimmen. Sobald eine Kiste mit verschiedenem Typ gefunden wurde, gilt dies als ein freier Platz. Wird nun wieder eine typgleiche Kiste gefunden, wird diese mit der auf dem freien Platz getauscht. Das Ergebnis ist, dass alle Kisten selber Gr��e und Rotation, die hinter der Referenzkiste liegen, direkt hinter diese platziert werden und damit eine Kette entsteht. Die Hoffnung ist, dass typgleiche Ketten zu einem besseren L�sungskandidaten f�hren.
+
+Als Mutationswahrscheinlichkeit wurde $p_c = 0,3$ gew�hlt. Die Durchschnittsfitness hat sich bei THPACK1-10 tats�chlich erheblich verbessert und betrug bei 5 Durchl�ufen $0,8751$ -- im Vergleich zu $0,8469$, als nur Typ-Rotation benutzt wurde. Ein Hypothesentest ist hier nicht n�tig. Allerdings w�re es interessant, zu pr�fen, ob der Clusterbildungsoperator auch ohne die Typ-Rotation gute Ergebnisse liefert, oder ob beide Operatoren nur im Zusammenspiel gut funktionieren. Tabelle \ref{tbl:stackrotationvsgrouping} zeigt die experimentellen Ergebnisse, woraus sich f�r den t-Test $t=3,7225$ ergibt, was als statistisch sehr signifikant gesehen werden kann. Die Werte im zweiten Teil lassen auch erkennen, dass eine Evolution mit Clusterbildung ohne Typ-Rotation sehr h�ufig in bestimmten lokalen Optima landet.
+
+\begin{table}
+  \caption{Fitnesswerte, rotierte sowie ausgelassene Kisten f�r THPACK1-10 nach 5 Minuten mit und ohne Typ-Rotation und mit Clusterbildung}
+  \label{tbl:stackrotationvsgrouping}
+	\centering
+	\begin{tabular}{l|l|c|c}
+	 & Fitness & rotierte Kisten & ausgelassene Kisten \\ 
+	\hline
+	Typ-Rotation und & 0,8756 & 58 & 26 \\ 
+	Clusterbildung & 0,8656 & 49 & 36 \\ 
+	 & 0,8738 & 32 & 29 \\ 
+	 & 0,8716 & 11 & 34 \\ 
+	 & 0,8890 & 40 & 25 \\ 
+	\hline
+	nur Clusterbildung & 0,8593 & 2 & 35 \\ 
+	 & 0,8615 & 3 & 35 \\ 
+	 & 0,8593 & 1 & 35 \\ 
+	 & 0,8615 & 3 & 35 \\ 
+	 & 0,8615 & 3 & 35 \\ 
+	\end{tabular}
+\end{table}
+
+\section{Ergebnisse}
+
+Das Projekt wird abgeschlossen, indem f�r eine Reihe von leichten sowie schwierigen Probleminstanzen ein Vergleich mit Ergebnissen aus der Literatur hergestellt wird. Dem Autor ist bewusst, dass es sich nicht nur um evolution�re Algorithmen handelt, sondern auch um komplexe deterministische Heuristiken. Da ein umfassender Algorithmenvergleich den Rahmen dieses Projekts �bersteigen w�rde, werden hier lediglich die Fitnesswerte zum Vergleich aufgelistet. Die folgenden Probleminstanzen wurden dabei benutzt.
+
+\begin{center}
+\begin{tabular}{l|l|c|c|l|c}
+Instanz \cite{packlib2} & Container & Typen & Kisten & Schwierigkeit & eigenes Limit \\ 
+\hline
+THPACK1-10 & $233 \times 220 \times 587$ & 3 & 130 & schwer & 5 Minuten\\
+THPACK8-1 & $2000 \times 1000 \times 3000$ & 7 & 100 & einfach & 5 Minuten \\ 
+THPACK8-2 & $2000 \times 1000 \times 3000$ & 7 & 175 & schwer & 30 Minuten\\ 
+THPACK8-4 & $2000 \times 1100 \times 3000$ & 7 & 100 & einfach & 5 Minuten\\ 
+THPACK8-5 & $2000 \times 900 \times 3000$ & 7 & 120 & einfach/mittel & 10 Minuten\\ 
+THPACK8-7 & $2400 \times 1300 \times 3500$ & 8 & 200 & schwer & 30 Minuten\\ 
+THPACK8-12 & $2400 \times 1000 \times 3200$ & 7 & 120 & mittel & 30 Minuten\\ 
+\end{tabular}
+\end{center}
+
+Das beste Ergebnis (hier in \%) nach f�nfmaliger Ausf�hrung ist rechts aufgelistet. Zahlen in Klammern bedeuten ausgelassene Kisten.
+
+\begin{center}
+\begin{tabularx}{\textwidth}{c|X|X|X|X|l}
+	Instanz & Ngoi et al. (1994) & Bischoff et al. (1995) & Bischoff und Rat. (1995) & Eley (2002) & selbst \\ 
+	\hline
+	1-10 & - & - & - & 88.7 (o.A.) & 88.9 (25) \\ 
+	8-1 & 62.5 & 62.5 & 62.5 & 62.5 & 62.5 \\ 
+	8-2 & 80.7 (54) & 89.7 (23) & 90.0 (35) & 90.8 (53) & 83.93 (24) \\ 
+	8-4 & 55.0 & 55.0 & 55.0 & 55.0 & 55.0 \\ 
+	8-5 & 77.2 & 77.2 & 77.2 & 77.2 & 77.2 \\ 
+	8-7 & 81.8 (10) & 83.9 (1) & 78.7 (18) & 84.7 & 76.7 (20) \\ 
+	8-12 & 78.5 & 76.5 (3) & 78.5 & 78.5 & 77.4 (2) \\ 
+\end{tabularx}
+\end{center}
+
+\bibliographystyle{gerplain}
+\bibliography{references}
+
+\end{document}
